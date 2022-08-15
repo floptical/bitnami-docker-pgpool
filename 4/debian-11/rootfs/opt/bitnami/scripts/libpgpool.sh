@@ -27,6 +27,7 @@ pgpool_env() {
 # Format log messages
 MODULE=pgpool
 
+
 # Paths
 export PGPOOL_BASE_DIR="/opt/bitnami/pgpool"
 export PGPOOL_DATA_DIR="${PGPOOL_BASE_DIR}/data"
@@ -52,6 +53,9 @@ export PATH="${PGPOOL_BIN_DIR}:$PATH"
 # Users
 export PGPOOL_DAEMON_USER="pgpool"
 export PGPOOL_DAEMON_GROUP="pgpool"
+
+# Citygeo Custom Settings
+export PGPOOL_REPLICATION_MODE="${PGPOOL_REPLICATION_MODE:-on}"
 
 # Settings
 export PGPOOL_PORT_NUMBER="${PGPOOL_PORT_NUMBER:-5432}"
@@ -150,9 +154,21 @@ pgpool_validate() {
     if [[ -z "$PGPOOL_ADMIN_USERNAME" ]] || [[ -z "$PGPOOL_ADMIN_PASSWORD" ]]; then
         print_validation_error "The Pgpool administrator user's credentials are mandatory. Set the environment variables PGPOOL_ADMIN_USERNAME and PGPOOL_ADMIN_PASSWORD with the Pgpool administrator user's credentials."
     fi
-    if [[ "$PGPOOL_SR_CHECK_PERIOD" -gt 0 ]] && { [[ -z "$PGPOOL_SR_CHECK_USER" ]] || [[ -z "$PGPOOL_SR_CHECK_PASSWORD" ]]; }; then
-        print_validation_error "The PostrgreSQL replication credentials are mandatory. Set the environment variables PGPOOL_SR_CHECK_USER and PGPOOL_SR_CHECK_PASSWORD with the PostrgreSQL replication credentials."
+
+    # if replication_mode parameter was passed, check to make sure we got our auth info for replication checking. Don't do anything if off.
+    if [[ ! -z "$PGPOOL_REPLICATION_MODE" ]]; then
+        if [[ 'on' == "$PGPOOL_REPLICATION_MODE" ]]; then
+            if [[ "$PGPOOL_SR_CHECK_PERIOD" -gt 0 ]] && { [[ -z "$PGPOOL_SR_CHECK_USER" ]] || [[ -z "$PGPOOL_SR_CHECK_PASSWORD" ]]; }; then
+                print_validation_error "The PostrgreSQL replication credentials are mandatory. Set the environment variables PGPOOL_SR_CHECK_USER and PGPOOL_SR_CHECK_PASSWORD with the PostrgreSQL replication credentials."
+            fi
+        fi
+    # else if it doesn't exist check anyway
+    else
+        if [[ "$PGPOOL_SR_CHECK_PERIOD" -gt 0 ]] && { [[ -z "$PGPOOL_SR_CHECK_USER" ]] || [[ -z "$PGPOOL_SR_CHECK_PASSWORD" ]]; }; then
+            print_validation_error "The PostrgreSQL replication credentials are mandatory. Set the environment variables PGPOOL_SR_CHECK_USER and PGPOOL_SR_CHECK_PASSWORD with the PostrgreSQL replication credentials."
+        fi
     fi
+
     if [[ -z "$PGPOOL_HEALTH_CHECK_USER" ]] || [[ -z "$PGPOOL_HEALTH_CHECK_PASSWORD" ]]; then
         print_validation_error "The PostrgreSQL health check credentials are mandatory. Set the environment variables PGPOOL_HEALTH_CHECK_USER and PGPOOL_HEALTH_CHECK_PASSWORD with the PostrgreSQL health check credentials."
     fi
@@ -203,7 +219,14 @@ pgpool_validate() {
         print_validation_error "The provided PGPOOL_USER_HBA_FILE: ${PGPOOL_USER_HBA_FILE} must exist."
     fi
 
-    local yes_no_values=("PGPOOL_ENABLE_POOL_HBA" "PGPOOL_ENABLE_POOL_PASSWD" "PGPOOL_ENABLE_LOAD_BALANCING" "PGPOOL_ENABLE_STATEMENT_LOAD_BALANCING" "PGPOOL_ENABLE_LOG_CONNECTIONS" "PGPOOL_ENABLE_LOG_HOSTNAME" "PGPOOL_ENABLE_LOG_PER_NODE_STATEMENT" "PGPOOL_AUTO_FAILBACK")
+    local on_off_values=("PGPOOL_REPLICATION_MODE")
+    for of in "${on_off_values[@]}"; do
+        if ! is_on_off_value "${!yn}"; then
+            print_validation_error "The values allowed for $of are: on or off"
+        fi
+    done
+
+    local yes_no_values=("PGPOOL_ENABLE_POOL_HBA" "PGPOOL_REPLICATION_MODE" "PGPOOL_ENABLE_POOL_PASSWD" "PGPOOL_ENABLE_LOAD_BALANCING" "PGPOOL_ENABLE_STATEMENT_LOAD_BALANCING" "PGPOOL_ENABLE_LOG_CONNECTIONS" "PGPOOL_ENABLE_LOG_HOSTNAME" "PGPOOL_ENABLE_LOG_PER_NODE_STATEMENT" "PGPOOL_AUTO_FAILBACK")
     for yn in "${yes_no_values[@]}"; do
         if ! is_yes_no_value "${!yn}"; then
             print_validation_error "The values allowed for $yn are: yes or no"
@@ -476,6 +499,8 @@ pgpool_create_config() {
     pgpool_set_property "statement_level_load_balance" "$(is_boolean_yes "$PGPOOL_ENABLE_STATEMENT_LOAD_BALANCING" && echo "on" || echo "off")"
     # Streaming Replication Check settings
     # https://www.pgpool.net/docs/latest/en/html/runtime-streaming-replication-check.html
+    pgpool_set_property "replication_mode" "$PGPOOL_REPLICATION_MODE"
+
     pgpool_set_property "sr_check_user" "$PGPOOL_SR_CHECK_USER"
     pgpool_set_property "sr_check_password" "$PGPOOL_SR_CHECK_PASSWORD"
     pgpool_set_property "sr_check_period" "$PGPOOL_SR_CHECK_PERIOD"

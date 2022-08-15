@@ -75,6 +75,16 @@ is_yes_no_value() {
     fi
 }
 
+# Check if on or off
+is_on_off_value() {
+    local -r bool="${1:-}"
+    if [[ "$bool" =~ ^(on|off)$ ]]; then
+        true
+    else
+        false
+    fi
+}
+
 ########################
 # Check if the provided argument is a boolean true/false value
 # Arguments:
